@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: dealerhonda-frontend
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    healthCheckInterval: 60
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+
+  - type: web
+    name: dealerhonda-whatsapp-server
+    runtime: node
+    rootDir: whatsapp-session-server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    healthCheckInterval: 60
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: WHATSAPP_WEBHOOK_SECRET
+        sync: false
+      - key: SESSIONS_DIR
+        value: /var/data/.sessions
+    disk:
+      name: whatsapp-sessions
+      mountPath: /var/data
+      sizeGB: 10
