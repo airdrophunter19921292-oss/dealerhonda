@@ -1,0 +1,167 @@
+name: Extract ZIP to Repository
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate ZIP file exists
+        shell: bash
+        run: |
+          set -e
+          ZIP_FILE="project web Honda_v5.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "::error::ZIP file not found: $ZIP_FILE"
+            exit 1
+          fi
+
+          echo "✅ ZIP file found: $ZIP_FILE"
+
+      - name: Validate ZIP integrity
+        shell: bash
+        run: |
+          set -e
+          ZIP_FILE="project web Honda_v5.zip"
+
+          if ! unzip -t "$ZIP_FILE" >/dev/null 2>&1; then
+            echo "::error::ZIP file is corrupted or invalid: $ZIP_FILE"
+            exit 1
+          fi
+
+          echo "✅ ZIP is valid"
+
+      - name: Extract ZIP to temporary directory
+        shell: bash
+        run: |
+          set -e
+          rm -rf _zip_extract
+          mkdir -p _zip_extract
+          unzip -o "project web Honda_v5.zip" -d _zip_extract
+
+          if [ -z "$(find _zip_extract -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            echo "::error::ZIP extracted successfully but no files were inside."
+            exit 1
+          fi
+
+          echo "✅ ZIP extracted to _zip_extract"
+
+      - name: Detect and flatten single root folder
+        shell: bash
+        run: |
+          set -e
+          cd _zip_extract
+
+          items=()
+          while IFS= read -r item; do
+            items+=("$item")
+          done < <(find . -mindepth 1 -maxdepth 1 -printf '%P\n')
+
+          if [ "${#items[@]}" -eq 1 ] && [ -d "${items[0]}" ]; then
+            echo "Detected single root folder: ${items[0]}"
+            find "${items[0]}" -mindepth 1 -maxdepth 1 -exec mv {} . \;
+            rmdir "${items[0]}"
+          fi
+
+          echo "Flattened root contents:"
+          find . -mindepth 1 -maxdepth 1 -printf '%P\n'
+
+      - name: Remove sensitive or unwanted entries from ZIP
+        shell: bash
+        run: |
+          set -e
+          find _zip_extract -type d \( -name .git -o -name node_modules -o -name .github \) -prune -exec rm -rf {} + 2>/dev/null || true
+
+          find _zip_extract -type f \( -name '.env' -o -name '.env.*' \) -delete 2>/dev/null || true
+
+          echo "✅ Filtered .git, node_modules, and .env files"
+
+      - name: Verify extracted content exists
+        shell: bash
+        run: |
+          set -e
+          if [ -z "$(find _zip_extract -mindepth 1 -print -quit)" ]; then
+            echo "::error::No extracted files remain after processing"
+            exit 1
+          fi
+
+          if [ ! -f "_zip_extract/package.json" ] && [ ! -f "_zip_extract/index.html" ] && [ ! -f "_zip_extract/index.php" ]; then
+            echo "⚠️  No obvious project root file found; continuing because ZIP content may still be valid."
+          fi
+
+          echo "✅ Extraction contains project files"
+
+      - name: Copy content to repository root
+        shell: bash
+        run: |
+          set -e
+          shopt -s dotglob
+          for item in _zip_extract/*; do
+            [ -e "$item" ] || continue
+            cp -a "$item" .
+          done
+
+          echo "✅ Copied extracted project content to repository root"
+
+      - name: Preserve original ZIP and prevent overwrite of repo protected files
+        shell: bash
+        run: |
+          set -e
+          if [ -f "project web Honda_v5.zip" ]; then
+            echo "✅ Original ZIP file preserved"
+          else
+            echo "::error::Original ZIP file was removed or missing"
+            exit 1
+          fi
+
+          if [ -d ".git" ]; then
+            echo "✅ Git metadata preserved"
+          fi
+
+          if [ -d ".github/workflows" ]; then
+            echo "✅ .github/workflows exists and will not be overwritten"
+          fi
+
+      - name: Display extracted structure
+        shell: bash
+        run: |
+          echo "📁 Repository root after extraction:"
+          find . -maxdepth 2 ! -path './.git/*' ! -path './.github/*' ! -path '*/node_modules/*' | sort | head -200
+
+      - name: Detect project characteristics
+        shell: bash
+        run: |
+          echo "🔎 Project detection:"
+          [ -f "package.json" ] && echo "  ✅ package.json found" || echo "  ⚠️  package.json not found"
+          [ -d "src" ] && echo "  ✅ src/ found" || echo "  ⚠️  src/ not found"
+          [ -d "public" ] && echo "  ✅ public/ found" || echo "  ⚠️  public/ not found"
+          [ -f "vite.config.js" ] && echo "  ✅ Vite detected" || true
+          [ -f "next.config.js" ] && echo "  ✅ Next.js detected" || true
+          [ -f "package-lock.json" ] && echo "  ✅ Node project detected" || true
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "ℹ️  No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Extract project web Honda v5"
+          git push origin HEAD:main
