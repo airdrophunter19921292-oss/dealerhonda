@@ -27,6 +27,7 @@ yarn-error.log*
 # local env files
 .env
 .env*.local
+.env.production
 
 # vercel
 .vercel
@@ -34,3 +35,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Session storage (ephemeral, not for git)
+whatsapp-session-server/.sessions/
+whatsapp-session-server/.sessions/**
